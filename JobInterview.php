@@ -26,7 +26,7 @@
           ->get();
 
       foreach ($days as &$day) {
-          $day->meals = Meal::where('day_id', $day->id)->get();
+          $day->meals = Meal::where('day_id', $day->id)->where('user_id', $user->id)->get();
       }
 
       $max = $endDate->toImmutable();
