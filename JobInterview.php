@@ -1,57 +1,70 @@
-  public function getDayRange2(
-      $startDate,
-      $endDate
-  ) {
-      $validator = Validator::make(['startDate' => $startDate, 'endDate' => $endDate], [
-          'startDate' => 'date_format:Y-m-d',
-          'endDate' => 'date_format:Y-m-d',
-      ]);
+<?php
+class DayController extends Controller {
 
-      if ($validator->fails()) {
-          return response()->json($validator->getErrors(), 422);
-      }
+    protected $dayModel;
+    protected $mealModel;
 
-      $user = auth()->user();
+    public function __constructor(Day $day, Meal $meal) {
+        $this->dayModel = $day;
+        $this->mealModel = $meal;
+    }
 
-      $startDate = new Carbon($startDate);
-      $endDate = new Carbon($endDate);
+    public function getDayRange2(DateRequest $request) {
+        /**
+         * If request validation fails, in the case of an AJAX request, a JSON response will be returned automatically.
+         */
+        $min = $this->formatDate($request->get('startDate'));
+        $max = $this->formatDate($request->get('endDate'));
 
-      $min = $startDate->format('Y-m-d');
-      $max = $endDate->format('Y-m-d');
+        $user = $this->getAuthenticatedUser();
 
-      $days = Day::where('date', '>=', $min)
-          ->where('date', '<=', $max)
-          ->where('user_id', $user->id)
-          ->orderBy('date', 'ASC')
-          ->get();
+        $days = $this->dayModel->getDayBetweenToDate($min, $max, $user->id);
 
-      foreach ($days as &$day) {
-          $day->meals = Meal::where('day_id', $day->id)->where('user_id', $user->id)->get();
-      }
+        foreach ($days as &$day) {
+            $day->meals = $this->mealModel->getMealByDateAndUserId($day->id, $user->id);
+        }
 
-      $max = $endDate->toImmutable();
-      $min = $startDate->toImmutable();
+        $max = $endDate->toImmutable();
+        $min = $startDate->toImmutable();
 
-      $transformedDays = [];
+        $transformedDays = $this->transformDate($min, $max, $days);
 
-      while ($min <= $max) {
-          foreach ($days as $day) {
-              if ($day->date === $min->format('Y-m-d')) {
-                  $transformedDays[] = $day->toArray();
-                  $min = $min->add('day', 1);
-                  continue;
-              }
-          }
+        return response()->json($transformedDays);
+    }
 
-          $transformedDays[] = [
-              'date'          => $min->format('Y-m-d'),
-              'calorie_limit' => 1500,
-              'total_calories' => 0,
-              'meals' => []
-          ];
+    private function transformDate($min, $max, $days)
+    {   
+        $CALORY_LIMIT = 1500;
+        $transformedDays = [];  
+        while ($min <= $max) {
+            foreach ($days as $day) {
+                if ($day->date === $min->format('Y-m-d')) {
+                    $transformedDays[] = $day->toArray();
+                    $min = $min->add('day', 1);
+                    continue;
+                }
+            }
 
-          $min = $min->add('day', 1);
-      }
+            $transformedDays[] = [
+                'date'          => $min->format('Y-m-d'),
+                'calorie_limit' => $CALORY_LIMIT,
+                'total_calories' => 0,
+                'meals' => []
+            ];
 
-      return response()->json($transformedDays);
-  }
+            $min = $min->add('day', 1);
+        }
+
+        return $transformedDays;
+    }
+
+    private function getAuthenticatedUser() {
+        return auth()->user();
+    }
+
+    private function formatDate($date)
+    {
+        $carbonDate = new Carbon($date);
+        return $carbonDate->format('Y-m-d');
+    }
+}
